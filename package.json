@@ -4,7 +4,8 @@
   "scripts": {
     "build": "webpack --config ./bundler/webpack.prod.js",
     "dev": "webpack serve --config ./bundler/webpack.dev.js",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "deploy-gp": "gh-pages -d dist -r git@github.com:1962247851/MyUniverse.git -b gh-pages"
   },
   "dependencies": {
     "@babel/core": "^7.16.12",
