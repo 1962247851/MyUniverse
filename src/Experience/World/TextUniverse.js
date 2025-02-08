@@ -69,7 +69,7 @@ export default class TextUniverse
     debugGui()
     {
         this.parameters = {
-            textColor: "#652e10",
+            textColor: "#00fdff",
         }
 
         if(this.debug.active)
