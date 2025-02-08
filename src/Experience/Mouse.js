@@ -44,13 +44,17 @@ export default class Mouse
 
             if(this.intersect_planet == 1)
             {
+                window.open("https://github.com/1962247851","_blank")
                 console.log("earth")
                 // this.experience.planetClick = 1
             }else if(this.intersect_planet == 2){
+                window.open("https://github.com/ordinaryroad-project","_blank")
                 console.log("jupiter")
             }else if(this.intersect_planet == 3){
+                window.open("https://blog.ordinaryroad.tech","_blank")
                 console.log("saturn")
             }else if(this.intersect_planet == 4){
+                window.open("https://barragefly.ordinaryroad.tech","_blank")
                 console.log("uranus")
             }
         });

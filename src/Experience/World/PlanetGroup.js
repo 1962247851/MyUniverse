@@ -19,9 +19,9 @@ export default class PlanetGroup
        
 
         //Group Information
-        const textList = ["ABOUT ME", "GALLERY", "TROPHY", "DIARY"]
+        const textList = ["ABOUT ME", "PROJECT", "BLOG", "BARRAGE_FLY"]
         const positions = [6,7,6,6]
-        const names = ["earth", "jupiter", "saturn","uranus"]
+        const names = ["earth", "jupiter", "saturn", "uranus"]
         const colorsHover = ["#48df34","#e99a2b","#012b6f","#fd3e1c"]
         this.parameters = {
             earth: '#31ec18',
