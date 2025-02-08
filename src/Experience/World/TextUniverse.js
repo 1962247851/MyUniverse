@@ -43,7 +43,7 @@ export default class TextUniverse
     setGeo()
     {
         this.textGeo = new TextGeometry(
-            'Anh\'s universe',
+            'Kinzo\'s universe',
             {
                 font: this.textures.font,
                 size: 10,
