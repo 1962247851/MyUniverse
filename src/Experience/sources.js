@@ -43,7 +43,7 @@ export default [
         type: 'starTexture',
         path:
         [
-            '/particles/2.png',
+            '/particles/4.png',
         ]
     },
     {
