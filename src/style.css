@@ -130,3 +130,10 @@ section:nth-child(odd) {
         transform: translateY(0)
     }
 }
+
+.cn-text {
+    font-size: 0.8em;
+    font-family: system-ui, -apple-system, sans-serif; /* 或者用您系统默认的中文字体 */
+    margin-left: 10px;
+    color: #888;
+}
