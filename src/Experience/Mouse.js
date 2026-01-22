@@ -14,30 +14,72 @@ export default class Mouse
         window.start = false
         this.gyroEnabled = true
         this.gyroEnabledTimer = null
+        this.gyroPermissionGranted = false  // 标记陀螺仪权限是否已授予
+        this.isMobile = this.detectMobile()  // 检测是否为移动设备
+        
+        // 初始化画面偏移变量，避免相机位置计算为 NaN
+        window.parallaxX = 0
+        window.parallaxY = 0
+        
         this.setInstance()  // Setup mouse
+    }
+
+    // 检测是否为移动设备
+    detectMobile() {
+        const u = navigator.userAgent;
+        const isAndroid = u.indexOf('Android') > -1 || u.indexOf('Adr') > -1;
+        const isiOS = !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/);
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(u);
+        return isAndroid || isiOS || isMobile;
     }
 
     // Generate mouse
     setInstance()
     {
         this.mouse = new THREE.Vector2();
-        window.addEventListener("mousemove", (event) => {
-            this.handleMouseMove(event.clientX, event.clientY);
-        });
-        window.addEventListener("touchstart", (event) => {
-            if (event.touches.length === 1) {
-                const touch = event.touches[0];
-                this.handleMouseMove(touch.clientX, touch.clientY);
-            }
-        });
-        window.addEventListener("touchmove", (event) => {
-            if (event.touches.length === 1) {
-                this.enableGyroscopeDelayed(1000);
-
-                const touch = event.touches[0];
-                this.handleMouseMove(touch.clientX, touch.clientY);
-            }
-        });
+        
+        // 桌面端：监听鼠标移动
+        if (!this.isMobile) {
+            window.addEventListener("mousemove", (event) => {
+                this.handleMouseMove(event.clientX, event.clientY);
+            });
+        }
+        
+        // 移动端：触摸事件用于点击检测和射线检测，但不用于画面偏移
+        if (this.isMobile) {
+            window.addEventListener("touchstart", (event) => {
+                if (event.touches.length === 1) {
+                    const touch = event.touches[0];
+                    // 更新鼠标位置用于射线检测，但不设置画面偏移
+                    this.handleMouseMove(touch.clientX, touch.clientY);
+                }
+            });
+            window.addEventListener("touchmove", (event) => {
+                if (event.touches.length === 1) {
+                    // 只有在陀螺仪权限已授予时才延时禁用
+                    if (this.gyroPermissionGranted) {
+                        this.enableGyroscopeDelayed(1000);
+                    }
+                    const touch = event.touches[0];
+                    // 更新鼠标位置用于射线检测，但不设置画面偏移
+                    this.handleMouseMove(touch.clientX, touch.clientY);
+                }
+            });
+        } else {
+            // 桌面端：触摸事件（如触摸屏）也支持位置偏移
+            window.addEventListener("touchstart", (event) => {
+                if (event.touches.length === 1) {
+                    const touch = event.touches[0];
+                    this.handleMouseMove(touch.clientX, touch.clientY);
+                }
+            });
+            window.addEventListener("touchmove", (event) => {
+                if (event.touches.length === 1) {
+                    const touch = event.touches[0];
+                    this.handleMouseMove(touch.clientX, touch.clientY);
+                }
+            });
+        }
 
         const u = navigator.userAgent;
         const isAndroid = u.indexOf('Android') > -1 || u.indexOf('Adr') > -1; // android terminal
@@ -45,16 +87,37 @@ export default class Mouse
 
         // Determine if it is iOS or Android
         if (isiOS) {
-            if (window.DeviceOrientationEvent.requestPermission) {
+            // 先检查 DeviceOrientationEvent 是否存在
+            if (window.DeviceOrientationEvent && typeof window.DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ 需要请求权限
                 window.DeviceOrientationEvent.requestPermission().then(state => {
                     if (state === "granted") {
+                        this.gyroPermissionGranted = true;
                         this.monitor();
+                    } else {
+                        // 权限被拒绝，不启用陀螺仪
+                        this.gyroPermissionGranted = false;
+                        console.log('陀螺仪权限被拒绝，将使用触摸控制');
                     }
+                }).catch(error => {
+                    // 请求权限失败
+                    this.gyroPermissionGranted = false;
+                    console.log('陀螺仪权限请求失败:', error);
                 });
-            } else {
+            } else if (window.DeviceOrientationEvent) {
+                // iOS 13 以下版本或支持但不需要权限，直接启用
+                this.gyroPermissionGranted = true;
                 this.monitor();
+            } else {
+                // 不支持 DeviceOrientationEvent
+                this.gyroPermissionGranted = false;
+                console.log('设备不支持陀螺仪 API');
             }
         } else if (isAndroid) {
+            // Android 上尝试启用，但需要检查是否真正可用
+            this.monitor();
+        } else {
+            // 其他平台，尝试启用
             this.monitor();
         }
 
@@ -80,14 +143,43 @@ export default class Mouse
 
     // Gyroscope rotation event handling
     monitor() {
-        if (window.DeviceMotionEvent) {
-            window.addEventListener('deviceorientation', (event) => {
-                if (this.gyroEnabled) {
-                    this.handleDeviceOrientation(event.alpha, event.beta, event.gamma);
+        if (window.DeviceOrientationEvent) {
+            // 检查设备是否真正支持陀螺仪
+            let orientationListener = null;
+            let hasReceivedEvent = false;
+            
+            // 设置一个测试监听器，检查是否能接收到事件
+            const testListener = (event) => {
+                if (event.alpha !== null && event.beta !== null && event.gamma !== null) {
+                    hasReceivedEvent = true;
+                    // 移除测试监听器
+                    window.removeEventListener('deviceorientation', testListener, true);
+                    
+                    // 添加真正的监听器
+                    orientationListener = (event) => {
+                        if (this.gyroEnabled && this.gyroPermissionGranted) {
+                            this.handleDeviceOrientation(event.alpha, event.beta, event.gamma);
+                        }
+                    };
+                    window.addEventListener('deviceorientation', orientationListener, true);
+                    this.gyroPermissionGranted = true;
                 }
-            }, true);
+            };
+            
+            // 添加测试监听器，等待一段时间检查是否收到事件
+            window.addEventListener('deviceorientation', testListener, true);
+            
+            // 如果 2 秒内没有收到事件，认为设备不支持或权限未授予
+            setTimeout(() => {
+                if (!hasReceivedEvent) {
+                    window.removeEventListener('deviceorientation', testListener, true);
+                    this.gyroPermissionGranted = false;
+                    console.log('设备不支持陀螺仪或权限未授予');
+                }
+            }, 2000);
         } else {
-            // alert('Your device does not support gyroscope.');
+            this.gyroPermissionGranted = false;
+            console.log('设备不支持陀螺仪 API');
         }
     }
 
@@ -100,6 +192,28 @@ export default class Mouse
     }
 
     handleMouseMove(clientX, clientY) {
+        // 移动端禁用鼠标位置偏移功能，但需要更新鼠标位置用于射线检测
+        if (this.isMobile) {
+            // 移动端：只更新鼠标位置用于射线检测，不设置画面偏移
+            const wasStartFalse = window.start === false;
+            window.start = true;
+            this.mouse.x = (clientX / this.sizes.width) - 0.5;
+            this.mouse.y = (clientY / this.sizes.height) - 0.5;
+            // 移动端不根据触摸位置设置画面偏移，保持为 0 或使用陀螺仪的值
+            // 如果是第一次启动（从 false 变为 true），强制设置为 0，避免画面跳变
+            // 即使陀螺仪已授予权限，第一次触摸时也要重置为 0，确保平滑过渡
+            if (wasStartFalse) {
+                window.parallaxX = 0;
+                window.parallaxY = 0;
+            } else if (!this.gyroPermissionGranted) {
+                // 如果陀螺仪未启用，也设置为 0
+                window.parallaxX = 0;
+                window.parallaxY = 0;
+            }
+            return;
+        }
+        
+        // 桌面端：更新鼠标位置并设置画面偏移
         window.start = true;
         this.mouse.x = (clientX / this.sizes.width) - 0.5;
         this.mouse.y = (clientY / this.sizes.height) - 0.5;
@@ -108,7 +222,10 @@ export default class Mouse
     }
 
     handleClick() {
-        this.enableGyroscopeDelayed(1000);
+        // 只有在陀螺仪权限已授予时才延时禁用，避免点击时画面闪动
+        if (this.gyroPermissionGranted) {
+            this.enableGyroscopeDelayed(1000);
+        }
 
         if (this.intersect_sun == 1) {
             this.click++;
