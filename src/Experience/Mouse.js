@@ -16,6 +16,9 @@ export default class Mouse
         this.gyroEnabledTimer = null
         this.gyroPermissionGranted = false  // 标记陀螺仪权限是否已授予
         this.isMobile = this.detectMobile()  // 检测是否为移动设备
+        this.touchStartPos = null  // 存储触摸开始位置，用于 touchend 时处理点击
+        this.lastClickTime = 0  // 上次点击时间，用于防重复点击
+        this.isSafari = this.detectSafari()  // 检测是否为 Safari 浏览器
         
         // 初始化画面偏移变量，避免相机位置计算为 NaN
         window.parallaxX = 0
@@ -31,6 +34,13 @@ export default class Mouse
         const isiOS = !!u.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/);
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(u);
         return isAndroid || isiOS || isMobile;
+    }
+
+    // 检测是否为 Safari 浏览器
+    detectSafari() {
+        const u = navigator.userAgent;
+        // Safari 检测：包含 Safari 但不包含 Chrome 或 Edge
+        return /Safari/i.test(u) && !/Chrome/i.test(u) && !/Edg/i.test(u);
     }
 
     // Generate mouse
@@ -50,21 +60,51 @@ export default class Mouse
             window.addEventListener("touchstart", (event) => {
                 if (event.touches.length === 1) {
                     const touch = event.touches[0];
+                    this.touchStartPos = { x: touch.clientX, y: touch.clientY };
                     // 更新鼠标位置用于射线检测，但不设置画面偏移
                     this.handleMouseMove(touch.clientX, touch.clientY);
                 }
-            });
+            }, { passive: true });
+            
             window.addEventListener("touchmove", (event) => {
                 if (event.touches.length === 1) {
-                    // 只有在陀螺仪权限已授予时才延时禁用
-                    if (this.gyroPermissionGranted) {
-                        this.enableGyroscopeDelayed(1000);
-                    }
                     const touch = event.touches[0];
                     // 更新鼠标位置用于射线检测，但不设置画面偏移
                     this.handleMouseMove(touch.clientX, touch.clientY);
+                    // 只有在陀螺仪权限已授予时才延时禁用（不在 touchstart 时禁用，避免点击时卡顿）
+                    if (this.gyroPermissionGranted) {
+                        this.enableGyroscopeDelayed(1000);
+                    }
                 }
-            });
+            }, { passive: true });
+            
+            // Safari 需要使用 touchend 来正确处理点击，Edge 使用 click 事件
+            if (this.isSafari) {
+                window.addEventListener("touchend", (event) => {
+                    if (event.changedTouches.length === 1 && this.touchStartPos) {
+                        const touch = event.changedTouches[0];
+                        // 检查是否是点击（移动距离很小）
+                        const moveDistance = Math.sqrt(
+                            Math.pow(touch.clientX - this.touchStartPos.x, 2) + 
+                            Math.pow(touch.clientY - this.touchStartPos.y, 2)
+                        );
+                        if (moveDistance < 10) {
+                            // 防重复点击：300ms 内只处理一次
+                            const now = Date.now();
+                            if (now - this.lastClickTime > 300) {
+                                // 更新鼠标位置用于射线检测
+                                this.handleMouseMove(touch.clientX, touch.clientY);
+                                // 减少延迟，优化性能
+                                setTimeout(() => {
+                                    this.lastClickTime = Date.now();
+                                    this.handleClick();
+                                }, 10);
+                            }
+                        }
+                        this.touchStartPos = null;
+                    }
+                }, { passive: true });
+            }
         } else {
             // 桌面端：触摸事件（如触摸屏）也支持位置偏移
             window.addEventListener("touchstart", (event) => {
@@ -121,8 +161,18 @@ export default class Mouse
             this.monitor();
         }
 
-        window.addEventListener("click", () => {
-            this.handleClick();
+        // 点击事件处理：Safari 使用 touchend，其他浏览器使用 click
+        window.addEventListener("click", (event) => {
+            // Safari 在移动端使用 touchend 处理点击，这里跳过 click 事件
+            if (this.isMobile && this.isSafari) {
+                return;
+            }
+            // 防重复点击：300ms 内只处理一次
+            const now = Date.now();
+            if (now - this.lastClickTime > 300) {
+                this.lastClickTime = now;
+                this.handleClick();
+            }
         });
     }
 
